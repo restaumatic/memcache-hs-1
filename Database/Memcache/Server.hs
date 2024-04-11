@@ -34,17 +34,6 @@ import           Database.Memcache.Types  (ServerSpec (..))
 import           Network.Socket           (HostName, ServiceName, getAddrInfo)
 import qualified Network.Socket           as S
 
--- Connection pool constants.
--- TODO: make configurable
-numResources :: Int
-numResources = 1
-
-keepAlive :: Double
-keepAlive = 300
-
-numStripes :: Maybe Int
-numStripes = Just 1
-
 -- | Memcached server connection.
 data Server = Server {
         -- | ID of server for consistent hashing.
@@ -83,8 +72,8 @@ newServerDefault ServerSpec{..} = do
     fat <- newIORef 0
     pSock <-
       newPool
-        $ setNumStripes numStripes
-        $ defaultPoolConfig connectSocket releaseSocket keepAlive numResources
+        $ setNumStripes (Just ssNumStripes)
+        $ defaultPoolConfig connectSocket releaseSocket ssKeepAlive ssNumConnections
     return Server
         { sid      = serverHash
         , pool     = pSock

@@ -25,7 +25,13 @@ data ServerSpec = ServerSpec
     ssPort :: ServiceName,
     -- | Authentication values to use for SASL authentication with this
     -- server.
-    ssAuth :: Authentication
+    ssAuth :: Authentication,
+    -- | Number of connections in connection pool.
+    ssNumConnections :: Int,
+    -- | Number of stripes in connection pool.
+    ssNumStripes :: Int,
+    -- | How long an idle connection should be kept open, in seconds.
+    ssKeepAlive :: Double
   }
   deriving (Eq, Show)
 
@@ -75,4 +81,11 @@ setAuth :: Authentication -> ServerSpec -> ServerSpec
 setAuth auth ss = ss {ssAuth = auth}
 
 instance Default ServerSpec where
-  def = ServerSpec "127.0.0.1" "11211" NoAuth
+  def = ServerSpec
+    { ssHost = "127.0.0.1"
+    , ssPort = "11211"
+    , ssAuth = NoAuth
+    , ssNumConnections = 1
+    , ssKeepAlive = 300
+    , ssNumStripes = 1
+    }
