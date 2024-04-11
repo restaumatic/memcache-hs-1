@@ -24,7 +24,10 @@ module Database.Memcache.Cluster (
         Cluster, ServerSpec(..), Options(..), newCluster, getServers, setServers,
 
         -- * Operations
-        Retries, keyedOp, anyOp, allOp, allOp'
+        Retries, keyedOp, anyOp, allOp, allOp',
+        
+        getServersForKey,
+        serverOp
     ) where
 
 import           Database.Memcache.Errors
@@ -162,6 +165,17 @@ getServerForKeyDefault  c k = do
     return $ if V.null servers'
         then Nothing
         else Just $ fromMaybe (V.last servers') (V.find searchF servers')
+
+-- | Figure out which server to talk to for this key, and the fallback servers in order.
+-- We use consistent hashing based on the CHORD approach.
+getServersForKey :: Cluster -> Key -> IO [Server]
+{-# INLINE getServersForKey #-}
+getServersForKey  c k = do
+    let hashedKey = hash k
+    servers <- getServers c
+    servers' <- V.filterM (serverAlive $ cDeadDelay c) servers
+    let (before, after) = V.partition (\s -> sid s < hashedKey) servers'
+    return $ V.toList $ after <> before
 
 -- | Run a Memcached operation against a particular server, handling any
 -- failures that occur, retrying the specified number of times.

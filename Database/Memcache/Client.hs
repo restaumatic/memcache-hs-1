@@ -89,6 +89,8 @@ module Database.Memcache.Client (
         -- ** Get operations
         get, gat, touch,
 
+        getFirst,
+
         -- ** Set operations
         set, cas, add, replace,
 
@@ -120,6 +122,7 @@ import           Data.ByteString           (ByteString)
 import qualified Data.ByteString           as B (null)
 import           Data.Default.Class
 import           Data.Word
+import Control.Applicative ((<|>))
 
 -- | A Memcached client, connected to a collection of Memcached servers.
 type Client = Cluster
@@ -156,6 +159,37 @@ get c k = do
         NoError        -> return $ Just (v, f, resCas r)
         ErrKeyNotFound -> return Nothing
         rs             -> throwStatus rs
+
+-- | Retrieve the value for the given key from the first server which doesn't return an error and has the value.
+-- If value is ultimately found, it is returned.
+-- Otherwise, if request to any of the servers failed, exception is thrown. If all servers returned ErrKeyNotFound, Nothing is returned.
+getFirst :: Cluster -> Key -> IO (Maybe (Value, Flags, Version))
+getFirst c k = do
+    let msg = emptyReq { reqOp = ReqGet Loud NoKey k }
+
+    let loop (s:rest) firstException = do
+          er <-
+            handle (\e -> pure (Left (e :: SomeException))) $
+            Right <$> serverOp c s msg
+          case er of
+            Left exception ->
+              -- Server failed - fallback to next, remember the exception
+              loop rest (firstException <|> Just exception)
+            Right r ->
+              case (resStatus r, resOp r) of
+                  (NoError, ResGet Loud v f) ->
+                    pure $ Just (v, f, resCas r)
+                  (ErrKeyNotFound, _) ->
+                    -- Key not found - fallback to the next server
+                    loop rest firstException
+                  _ -> throwIO $ wrongOp r "GET"
+        loop [] (Just firstException) = throwIO firstException
+        loop [] Nothing = pure Nothing
+
+    servers <- getServersForKey c k
+    if null servers
+      then throwIO $ ClientError NoServersReady
+      else loop servers Nothing
 
 -- | Get-and-touch: Retrieve the value for the given key from Memcached, and
 -- also update the stored key-value pairs expiration time at the server. Use an
